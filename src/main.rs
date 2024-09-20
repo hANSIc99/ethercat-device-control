@@ -12,7 +12,7 @@ async fn main() -> Result<()> {
 
     let ec_slave = EtherCATDevice::new("5.80.201.232.2.1").await?;
     println!("ec_slave : {:?}", ec_slave); // 0x08
-    let x = 3;
+    let x = 2;
 
     Ok(())
 }
