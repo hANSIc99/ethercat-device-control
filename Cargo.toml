@@ -13,4 +13,6 @@ keywords = ["Ethercat", "Beckhoff", "ADS", "automation", "PLC"]
 
 [dependencies]
 ads_client = "1.4.1"
-tokio = { version =  "1.19.2", features = ["rt", "rt-multi-thread", "net", "io-util", "macros"] }
+clap = { version = "4.5.17", features = ["derive"] }
+tokio = { version =  "1.19.2", features = ["rt", "rt-multi-thread"] }
+regex = "1.10.6"

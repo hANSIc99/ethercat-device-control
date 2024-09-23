@@ -19,7 +19,7 @@
                     "kind": "bin"
                 }
             },
-            "args": [],
+            "args": ["5.80.201.232.2.1", "1001", "setstate", "preop"],
             "cwd": "${workspaceFolder}"
         },
         {
