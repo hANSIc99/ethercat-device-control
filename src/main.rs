@@ -1,4 +1,5 @@
 mod ec_device;
+mod ec_state;
 mod misc;
 
 use ads_client::AdsError;
@@ -6,7 +7,7 @@ use ec_device::EtherCATDevice;
 use misc::EcState;
 use regex::Regex;
 use clap::{Args, Parser, Subcommand, ValueEnum};
-
+use tokio::runtime::Runtime;
 pub type Result<T> = std::result::Result<T, AdsError>;
 
 
@@ -69,10 +70,31 @@ async fn main() -> Result<()> {
         println!("AmsNetId: {:?}", args.AmsNetId);
     } else {
         println!("Invalid AmsNetId");
+        return Ok(())
     };
 
     
     let re_device_id = Regex::new(r"^(100[1-9]|10[1-9]\d|1[1-9]\d{2}|[2-9]\d{3})$").unwrap();
+    if(re_device_id.is_match(&args.DeviceAddress)){
+        println!("Valid Device Address found!");
+        println!("Device Address: {:?}", args.DeviceAddress);
+        
+    } else {
+        println!("Invalid Device Address");
+        return Ok(())
+    }
+
+    let port = args.DeviceAddress.parse::<u32>().unwrap();
+
+    //let rt = Runtime::new().unwrap();
+    //let ec_device = rt.block_on( EtherCATDevice::new(&args.AmsNetId, port)).unwrap(); // TODO
+    let mut ec_device = EtherCATDevice::new(&args.AmsNetId, port).await?;
+    // match rt.block_on(ads_client.read_state()) {
+    //     Ok(state) => println!("State: {:?}", state),
+    //     Err(err) => println!("Error: {}", err.to_string())
+    // }
+
+    println!("EtherCAT Device: {:?}", ec_device);
 
     match args.command {
         Commands::fwupdate => {
@@ -87,6 +109,9 @@ async fn main() -> Result<()> {
                 },
                 EcStateCmd::preop => {
                     println!("Set EtherCAT device to PreOp");
+                    //ec_device.request_ec_state(EcState::PreOp).await?;
+                    let test = tokio::join!(ec_device.request_ec_state(EcState::PreOp));
+                    println!("EtherCAT Device: {:?}", ec_device);
                 },
                 EcStateCmd::safeop => {
                     println!("Set EtherCAT device to SafeOp");
@@ -102,9 +127,6 @@ async fn main() -> Result<()> {
         }
     }
 
-    // let ec_slave = EtherCATDevice::new("5.80.201.232.2.1").await?;
-    // println!("ec_slave : {:?}", ec_slave); // 0x08
-    // let x = 2;
 
     Ok(())
 }
