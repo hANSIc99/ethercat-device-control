@@ -1,6 +1,12 @@
+use clap::Subcommand;
+use clap::{Args, Parser, ValueEnum};
+
 #[derive(Debug)]
 #[derive(PartialEq)]
+#[derive(Subcommand)]
+#[command(rename_all = "lower")]
 pub enum EcState {
+
     Init            = 0x0001,
     PreOp           = 0x0002,
     Boot            = 0x0003,
