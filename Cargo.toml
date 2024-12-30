@@ -12,7 +12,9 @@ categories = ["asynchronous", "network-programming", "science", "command-line-ut
 keywords = ["Ethercat", "Beckhoff", "ADS", "automation", "PLC"]
 
 [dependencies]
-ads_client = "1.5.1"
+ads_client = "1.6.0"
 clap = { version = "4.5.17", features = ["derive"] }
 tokio = { version =  "1.19.2", features = ["rt", "rt-multi-thread"] }
 regex = "1.10.6"
+log = { version = "0.4.20", features = ["max_level_trace", "release_max_level_warn"]}
+log4rs = "1.2.0"

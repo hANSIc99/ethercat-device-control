@@ -1,4 +1,6 @@
 
+#![allow(dead_code)]
+#![allow(unused)]
 use ads_client::{Client, AdsTimeout, Result};
 use crate::misc::{EcState, EcErrState, EcLinkState, EcLinkPort, EcSDeviceError};
 
@@ -9,6 +11,7 @@ type EtherCATSlaveState = std::result::Result<EcState, EcSDeviceError>;
 pub struct EtherCATDevice {
     state           : EtherCATSlaveState,
     ads_ec_master   : Client,
+    pub ads_ec_device   : Client,
     device_addr     : u32,
     net_id          : String
 }
@@ -17,9 +20,10 @@ impl EtherCATDevice {
     //pub fn new(value: [u8; 2] ) -> Self {
     pub async fn new(addr :&str, device_no: u32) -> Result<Self> {
         
-        let ads_client = Client::new(addr, 0xFFFF, AdsTimeout::DefaultTimeout).await?; // Zu EtherCATDevice ??
+        let ads_client_master = Client::new(addr, 0xFFFF, AdsTimeout::DefaultTimeout).await?;
+        let ads_client_device = Client::new(addr, device_no.try_into().unwrap(), AdsTimeout::CustomTimeout(30)).await?;
         let mut ec_state_raw : [u8; 2] = [0; 2];
-        let n_bytes_read = ads_client.read(0x00000009, device_no, &mut ec_state_raw).await?;
+        let n_bytes_read = ads_client_master.read(0x00000009, device_no, &mut ec_state_raw).await?;
 
         if n_bytes_read < 2 {
             print!("Error"); // TODO
@@ -45,7 +49,8 @@ impl EtherCATDevice {
                     link_state  : link_state,
                     link_port   : link_port
                 }),
-                ads_ec_master   : ads_client,
+                ads_ec_master   : ads_client_master,
+                ads_ec_device   : ads_client_device,
                 device_addr     : device_no,
                 net_id          : String::from(addr)
             },
@@ -53,7 +58,8 @@ impl EtherCATDevice {
         } else {
             Ok(EtherCATDevice {
                 state           : EtherCATSlaveState::Ok(ec_state),
-                ads_ec_master   : ads_client,
+                ads_ec_master   : ads_client_master,
+                ads_ec_device   : ads_client_device,
                 device_addr     : device_no,
                 net_id          : String::from(addr)
             })
@@ -128,12 +134,26 @@ impl EtherCATDevice {
 
         // Neuer ADS Client: Port = Slave ADDR
         // FoE Open Write
-        let foe_ads = Client::new(&self.net_id, self.device_addr.try_into().unwrap(), AdsTimeout::DefaultTimeout).await?;
+        //let foe_ads = Client::new(&self.net_id, self.device_addr.try_into().unwrap(), AdsTimeout::DefaultTimeout).await?;
 
-        let rd_length = foe_ads.read_write(0xF402, 0, &mut rd_raw, f_name.as_bytes()).await?;
+        let rd_length = self.ads_ec_device.read_write(0xF402, 0, &mut rd_raw, f_name.as_bytes()).await?;
         //self.ads_ec_master.read_write(0x4F02, , read_data, write_data)
         
         Ok(u32::from_ne_bytes(rd_raw[0..4].try_into().unwrap()))
+    }
+
+    pub async fn ec_foe_close(&self, hdl : u32) -> Result<()>{
+        let mut rd_raw : [u8; 199] = [0; 199];
+        let wr_raw : [u8; 0] = [0; 0];
+
+        self.ads_ec_device.read_write(0xF403, hdl, &mut rd_raw, &wr_raw).await?;
+        Ok(())
+    }
+
+    pub async fn ec_foe_write(&self, f_hdl : u32, data : &[u8]) -> Result<()>{
+        let mut rd_raw : [u8; 199] = [0; 199];
+        self.ads_ec_device.read_write(0xF405, f_hdl.try_into().unwrap(), &mut rd_raw, data).await?;
+        Ok(())
     }
 
 }
