@@ -1,7 +1,7 @@
 use clap::Subcommand;
 use clap::{Args, Parser, ValueEnum};
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 #[derive(PartialEq)]
 #[derive(Subcommand)]
 #[command(rename_all = "lower")]

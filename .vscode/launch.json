@@ -20,7 +20,8 @@
                 }
             },
             //"args": ["172.17.56.160.5.1", "1002", "fwupdate", "C:\\TwinCAT\\Functions\\TE5950-Drive-Manager-2\\Firmware\\AX8000 AMP8000\\AX8yxx-xxxx_v01.05_b0012_0105.efw"],
-            "args": ["172.17.56.160.5.1", "1002", "fwupdate", "C:\\TwinCAT\\Functions\\TE5950-Drive-Manager-2\\Firmware\\AX8000 AMP8000\\AX8yxx-xxxx_v01.05_b0012_0105.efw"],
+            //"args": ["172.17.56.160.5.1", "1002", "fwupdate", "C:\\TwinCAT\\Functions\\TE5950-Drive-Manager-2\\Firmware\\AX8000 AMP8000\\AX8yxx-xxxx_v01.04_b0008_0104.efw"],
+            "args": ["172.17.56.160.5.1", "1002", "setstate", "C:\\TwinCAT\\Functions\\TE5950-Drive-Manager-2\\Firmware\\AX8000 AMP8000\\AX8yxx-xxxx_v01.04_b0008_0104.efw"],
             "cwd": "${workspaceFolder}"
         },
         {

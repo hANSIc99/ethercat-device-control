@@ -1,7 +1,9 @@
-
 #![allow(dead_code)]
 #![allow(unused)]
-use ads_client::{Client, AdsTimeout, Result};
+use std::thread::{self, sleep};
+use std::time;
+use log::{trace, debug, info, warn, error};
+use ads_client::{Client, AdsTimeout, Result, AdsError};
 use crate::misc::{EcState, EcErrState, EcLinkState, EcLinkPort, EcSDeviceError};
 
 type EtherCATSlaveState = std::result::Result<EcState, EcSDeviceError>;
@@ -26,20 +28,21 @@ impl EtherCATDevice {
         let n_bytes_read = ads_client_master.read(0x00000009, device_no, &mut ec_state_raw).await?;
 
         if n_bytes_read < 2 {
-            print!("Error"); // TODO
+            error!("Error - ADS response less than 2 bytes");
+            return Err(AdsError{n_error : 1798, s_msg : String::from("Invalid data values")});
         }
 
         let ec_state = EcState::from(ec_state_raw[0] & 0x0F);
-        println!("EcStateMachine state {:?}", ec_state);
+        trace!("EcStateMachine state {:?}", ec_state);
 
         let ec_err_state = EcErrState::from(ec_state_raw[0] & 0xF0);
-        println!("EcErrorState {:?}", ec_err_state);
+        trace!("EcErrorState {:?}", ec_err_state);
 
         let link_state = EcLinkState::from(ec_state_raw[1] & 0x0F);
-        println!("EcLinkState {:?}", link_state);
+        trace!("EcLinkState {:?}", link_state);
 
         let link_port = EcLinkPort::from(ec_state_raw[1] & 0xF0);
-        println!("EcLinkPort {:?}", link_port);
+        trace!("EcLinkPort {:?}", link_port);
 
         if ec_err_state != EcErrState::Ok || link_state != EcLinkState::Ok {     
             Ok(EtherCATDevice {
@@ -66,30 +69,27 @@ impl EtherCATDevice {
         }
     }
 
-    // async fn read_state(&self) -> Result<()>{
-
-    // }
-
     pub async fn update_ec_state(&mut self) -> Result<()>{
 
         let mut ec_state_raw : [u8; 2] = [0; 2];
         let n_bytes_read = self.ads_ec_master.read(0x00000009, self.device_addr, &mut ec_state_raw).await?;
 
         if n_bytes_read < 2 {
-            print!("Error"); // TODO
+            error!("Error - ADS response less than 2 bytes");
+            return Err(AdsError{n_error : 1798, s_msg : String::from("Invalid data values")});
         }
 
         let ec_state = EcState::from(ec_state_raw[0] & 0x0F);
-        println!("EcStateMachine state {:?}", ec_state);
+        trace!("EcStateMachine state {:?}", ec_state);
 
         let ec_err_state = EcErrState::from(ec_state_raw[0] & 0xF0);
-        println!("EcErrorState {:?}", ec_err_state);
+        trace!("EcErrorState {:?}", ec_err_state);
 
         let link_state = EcLinkState::from(ec_state_raw[1] & 0x0F);
-        println!("EcLinkState {:?}", link_state);
+        trace!("EcLinkState {:?}", link_state);
 
         let link_port = EcLinkPort::from(ec_state_raw[1] & 0xF0);
-        println!("EcLinkPort {:?}", link_port);
+        trace!("EcLinkPort {:?}", link_port);
 
         if ec_err_state != EcErrState::Ok || link_state != EcLinkState::Ok {  
             self.state = Err(EcSDeviceError {
@@ -120,24 +120,30 @@ impl EtherCATDevice {
             return Ok(())
         }
         
-        //let ec_state_raw = (req_ec_state as u16).to_ne_bytes();
-        self.ads_ec_master.write(0x00000009, self.device_addr, &(req_ec_state as u16).to_ne_bytes() ).await
-        // Todo: While schleife bis ECState erreicht ist oder Error
+        self.ads_ec_master.write(0x00000009, self.device_addr, &(req_ec_state as u16).to_ne_bytes() ).await?;
+
+        loop {
+            self.update_ec_state().await?;
+            if self.state.as_ref().is_ok_and( |ec_state| req_ec_state.eq(ec_state) ) {break}
+            if self.state.is_err() {break}
+            sleep(std::time::Duration::from_millis(100));
+        }
+
+        match &self.state {
+            Ok(ec_state) => {println!("State switched to {:?}", ec_state);},
+            Err(err_state) => {
+                println!("EC Error - State: {:?}, Error: {:?}, Link: {:?}, Port: {:?}", err_state.ec_state, err_state.ec_err_state, err_state.link_state, err_state.link_port);
+            }
+        };
+        
+        Ok(())
     }
 
     pub async fn ec_foe_open_wr(&self, f_name : &str) -> Result<u32>{
         let mut rd_raw : [u8; 199] = [0; 199];
 
-        println!("f_name B {:?}", f_name);
-        // Read length: 199
-        // Write length: 29 (Filename Size)
-
-        // Neuer ADS Client: Port = Slave ADDR
-        // FoE Open Write
-        //let foe_ads = Client::new(&self.net_id, self.device_addr.try_into().unwrap(), AdsTimeout::DefaultTimeout).await?;
-
+        trace!("f_name B {:?}", f_name);
         let rd_length = self.ads_ec_device.read_write(0xF402, 0, &mut rd_raw, f_name.as_bytes()).await?;
-        //self.ads_ec_master.read_write(0x4F02, , read_data, write_data)
         
         Ok(u32::from_ne_bytes(rd_raw[0..4].try_into().unwrap()))
     }

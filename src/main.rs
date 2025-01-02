@@ -19,7 +19,7 @@ use clap::{Args, Parser, Subcommand, ValueEnum};
 use tokio::runtime::Runtime;
 pub type Result<T> = std::result::Result<T, AdsError>;
 
-use log::{trace, info, warn, error};
+use log::{trace, debug, info, warn, error};
 use log4rs::filter::threshold::ThresholdFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::file::FileAppender;
@@ -28,10 +28,12 @@ use log4rs::config::{Appender, Config, Logger, Root};
 
 
 #[derive(Parser)]
-#[command(version, about, long_about = None)]
+#[command(version, about, long_about = "Long about instead of None")]
+
+// Todo: Log optionen
 
 struct Cli {
-    /// Optional name to operate on
+
     #[clap(value_parser, required = true, help = "AmsNetId of the EtherCAT Master")]
     AmsNetId: String,
     #[clap(value_parser, required = true, help = "EtherCAT device number")]
@@ -63,7 +65,7 @@ struct FwUpdateArgs {
 
 
 #[derive(Debug, Args)]
-#[command(args_conflicts_with_subcommands = true)]
+#[command(args_conflicts_with_subcommands = true, after_help = "after help string", after_long_help = "after long help")]
 struct SetStateArgs {
     #[command(subcommand)]
     command: EcState,
@@ -90,20 +92,19 @@ async fn main() -> Result<()> {
         .unwrap();
 
     let config = Config::builder()
+        // .appender(
+        //     Appender::builder()
+        //         .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
+        //         .build("logfile", Box::new(logfile)))
         .appender(
             Appender::builder()
                 .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
-                .build("logfile", Box::new(logfile)))
-        // .appender(
-        //     Appender::builder()
-        //         .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Trace)))
-        //         .build("stderr", Box::new(stderr)),
-        // )
+                .build("stderr", Box::new(stderr)))
         .build(
             Root::builder()
-                .appender("logfile")
-                //.appender("stderr")
-                .build(log::LevelFilter::Trace),
+                //.appender("logfile")
+                .appender("stderr")
+                .build(log::LevelFilter::Info),
         )
         .unwrap();
 
@@ -114,45 +115,44 @@ async fn main() -> Result<()> {
 
     let re_net_id = Regex::new(r"^(\d{1,3}\.){5}\d{1,3}$").unwrap();
     if (re_net_id.is_match(&args.AmsNetId)){
-        println!("Valid AmsNetId found!");
-        println!("AmsNetId: {:?}", args.AmsNetId);
+        debug!("Valid AmsNetId found: {:?}", args.AmsNetId);
     } else {
-        println!("Invalid AmsNetId");
+        error!("Invalid AmsNetId");
         return Ok(())
     };
 
     
     let re_device_id = Regex::new(r"^(100[1-9]|10[1-9]\d|1[1-9]\d{2}|[2-9]\d{3})$").unwrap();
     if re_device_id.is_match(&args.DeviceAddress) {
-        println!("Valid Device Address found!");
-        println!("Device Address: {:?}", args.DeviceAddress);
-        
+        debug!("Valid Device Address found: {:?}", args.DeviceAddress);  
     } else {
-        println!("Invalid Device Address");
+        error!("Invalid Device Address");
         return Ok(())
     }
 
     let port = args.DeviceAddress.parse::<u32>().unwrap();
 
-    //let rt = Runtime::new().unwrap();
-    //let ec_device = rt.block_on( EtherCATDevice::new(&args.AmsNetId, port)).unwrap(); // TODO
     let mut ec_device = EtherCATDevice::new(&args.AmsNetId, port).await?;
-    // match rt.block_on(ads_client.read_state()) {
-    //     Ok(state) => println!("State: {:?}", state),
-    //     Err(err) => println!("Error: {}", err.to_string())
-    // }
 
-    println!("EtherCAT Device: {:?}", ec_device);
+    trace!("EtherCAT Device: {:?}", ec_device);
 
     match args.command {
         Commands::fwupdate(arg) => {
-            println!("Firmware Update: {:?}", arg.fileName);
+            trace!("Specified filename: {:?}", arg.fileName);
             let fw_path = Path::new(&arg.fileName);
             match fw_path.try_exists() {
-                Ok(_r) =>{println!("Path exist")},
-                Err(_e) => {println!("Path does not exist")}
+                Ok(res) =>{
+                    if res {debug!("Path check suceeded: {:?}", fw_path);}
+                    else {
+                        error!("Path check failed - path does no exist");
+                        return Err(AdsError{n_error : 1804, s_msg : String::from("Not found files")});
+                    }
+                },
+                Err(_e) => {
+                    error!("Path check failed");
+                    return Err(AdsError{n_error : 1792, s_msg : String::from("General device error")});
+                }
             }
-
 
 
             let filename = fw_path  .file_stem()
@@ -160,26 +160,23 @@ async fn main() -> Result<()> {
 
 
             let f_str = filename.to_str().ok_or_else(|| AdsError{n_error : 0x706, s_msg : String::from("Invalid Data - Filename not specified")})?;
-            println!("f_str A {:?}", f_str);
-            // let wr_hdl = ec_device.ec_foe_open_wr(f_str).await?;
-            // println!("Write handle: {:?}", wr_hdl);
 
             // Datei einlesen
             let f = File::open(fw_path)?;
             let f_length = f.metadata().unwrap().len();
-            println!("File length: {:?}", f_length);
+            info!("File length: {:?}", f_length);
             let mut f_reader = BufReader::new(f);
 
-            // Todo: Switch to Boot mode before
+            ec_device.request_ec_state(EcState::Boot).await?;
 
             // File Open
             let f_hdl = ec_device.ec_foe_open_wr(f_str).await?;
 
             if f_hdl <= 0 {
-                println!("No file handle");
+                error!("No file handle");
                 return Ok(())
             } else {
-                println!("File handle created: {:?}", f_hdl);
+                trace!("File handle created: {:?}", f_hdl);
             }
 
 
@@ -201,7 +198,6 @@ async fn main() -> Result<()> {
                 if bar >= 100.0 {
                     print!("\n Waiting for write process to be finished - this can take several minutes...");
                 }
-                //sleep(std::time::Duration::from_millis(3));
 
                 if bytes_read > 0 {
                     ec_device.ec_foe_write(f_hdl, &chunk[..bytes_read]).await?;
