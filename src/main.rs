@@ -196,8 +196,11 @@ async fn main() -> Result<()> {
 
                 let bar : f32 = (sum_read as f32) / (f_length as f32) * 100.0;
 
-                print!("\rLoad: {:2.1}", bar);
+                print!("\rLoad [%]: {:2.1}", bar);
                 let _ = std::io::stdout().flush();
+                if bar >= 100.0 {
+                    print!("\n Waiting for write process to be finished - this can take several minutes...");
+                }
                 //sleep(std::time::Duration::from_millis(3));
 
                 if bytes_read > 0 {
@@ -206,20 +209,11 @@ async fn main() -> Result<()> {
                     break;
                 }
 
-                
-
-
-
-                // if bytes_read <= 0 {
-                //     println!("\r\nLesen fertig");
-                //     break;
-                // }
             }
             println!("\r\n");    
 
             ec_device.ec_foe_close(f_hdl).await?;
-            //fw_path.try_exists().map_or_else(|v| {println!("Path does not exist")}, |x| {println!("Path exist")});
-            println!("Update fertig");
+            println!("FW update done - device need power cycle");
             Ok(())
         }
         Commands::setstate(args) => {

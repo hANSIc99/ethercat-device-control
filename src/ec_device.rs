@@ -21,7 +21,7 @@ impl EtherCATDevice {
     pub async fn new(addr :&str, device_no: u32) -> Result<Self> {
         
         let ads_client_master = Client::new(addr, 0xFFFF, AdsTimeout::DefaultTimeout).await?;
-        let ads_client_device = Client::new(addr, device_no.try_into().unwrap(), AdsTimeout::CustomTimeout(30)).await?;
+        let ads_client_device = Client::new(addr, device_no.try_into().unwrap(), AdsTimeout::CustomTimeout(200)).await?;
         let mut ec_state_raw : [u8; 2] = [0; 2];
         let n_bytes_read = ads_client_master.read(0x00000009, device_no, &mut ec_state_raw).await?;
 
