@@ -116,7 +116,7 @@ async fn main() -> Result<()> {
 
         .appender(
             Appender::builder()
-                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
+                .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Trace)))
                 .build("stderr", Box::new(stderr)))
         .build(
             Root::builder()
