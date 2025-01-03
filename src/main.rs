@@ -1,7 +1,3 @@
-#![allow(non_snake_case)]
-#![allow(non_camel_case_types)]
-#![allow(dead_code)]
-#![allow(unused)]
 mod ec_device;
 mod misc;
 
@@ -9,14 +5,11 @@ use std::{fs::File, io::Read};
 use std::io::BufReader;
 use std::io::Write;
 use std::path::Path;
-use std::thread::{self, sleep};
-use std::time;
 use ads_client::AdsError;
 use ec_device::EtherCATDevice; 
 use misc::EcState;
 use regex::Regex;
 use clap::{Args, Parser, Subcommand, ValueEnum};
-use tokio::runtime::Runtime;
 pub type Result<T> = std::result::Result<T, AdsError>;
 
 use log::{trace, debug, info, warn, error};
@@ -24,20 +17,21 @@ use log4rs::filter::threshold::ThresholdFilter;
 use log4rs::append::console::ConsoleAppender;
 use log4rs::append::file::FileAppender;
 use log4rs::encode::pattern::PatternEncoder;
-use log4rs::config::{Appender, Config, Logger, Root};
+use log4rs::config::{Appender, Config, Root};
 
 
 #[derive(Parser)]
 #[command(version, about, long_about = "Long about instead of None")]
 
 // Todo: Log optionen
+// command attributes https://docs.rs/clap/latest/clap/_derive/index.html
 
 struct Cli {
 
-    #[clap(value_parser, required = true, help = "AmsNetId of the EtherCAT Master")]
-    AmsNetId: String,
-    #[clap(value_parser, required = true, help = "EtherCAT device number")]
-    DeviceAddress: String,
+    #[clap(value_parser, value_name = "AmsNetId", required = true, help = "AmsNetId of the EtherCAT Master")]
+    ams_net_id: String,
+    #[clap(value_parser, value_name = "DeviceAddress", required = true, help = "EtherCAT device number")]
+    device_address: String,
     // /// Sets a custom config file
     // #[arg(short, long, value_name = "FILE")]
     // config: Option<PathBuf>,
@@ -45,22 +39,46 @@ struct Cli {
     // /// Turn debugging information on
     // #[arg(short, long, action = clap::ArgAction::Count)]
     // debug: u8,
+    #[clap(value_parser, value_name = "LogLevel", required = false)]
+    //log_level : Option<log::LevelFilter>,
+    log_level : Option<LogLevel>,
 
     #[command(subcommand)]
     command: Commands,
+    
 }
 
+#[derive(ValueEnum, Debug, Clone)]
+enum LogLevel {
+    Error,
+    Warn,
+    Info,
+    Debug,
+    Trace
+}
 
 #[derive(Subcommand)]
 enum Commands {
-    fwupdate(FwUpdateArgs),
-    setstate(SetStateArgs),
+    #[command(rename_all = "lower" )]
+    FwUpdate(FwUpdateArgs),
+    #[command(rename_all = "lower" )]
+    SetState(SetStateArgs),
+    // #[command(rename_all = "lower" )]
+    // LogLevel(LogLvlCmd)
 }
+
+// #[derive(Debug, Args)]
+// #[command(args_conflicts_with_subcommands = false)]
+// struct LogLvlCmd {
+//     #[command(subcommand)]
+//     level : LogLevel
+// }
 
 #[derive(Debug, Args)]
 #[command(args_conflicts_with_subcommands = true)]
 struct FwUpdateArgs {
-    fileName : String
+    #[clap(value_name = "FileName")]
+    file_name : String
 }
 
 
@@ -77,45 +95,43 @@ struct SetStateArgs {
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
 
-    // Define appender "stderr"
+    let args = Cli::parse();
+
+    let loglvl = args.log_level.map_or_else(
+        || log::LevelFilter::Error, |lvl| {
+        match lvl {
+            LogLevel::Error => log::LevelFilter::Error,
+            LogLevel::Warn => log::LevelFilter::Warn,
+            LogLevel::Info => log::LevelFilter::Info,
+            LogLevel::Debug => log::LevelFilter::Debug,
+            LogLevel::Trace => log::LevelFilter::Trace
+        }
+    });
+
     let stderr = ConsoleAppender::builder()
-        // https://github.com/estk/log4rs/blob/main/src/encode/pattern/mod.rs
-        // https://docs.rs/chrono/latest/chrono/format/strftime/
-        //.encoder(Box::new(PatternEncoder::new("{d:<35.35} - {l} - {f}:{L}- {m}{n}")))
         .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S%.3f)} - {l} - {f}:{L}- {m}{n}")))
         .build();
-    
-    // Define appender "logfile"
-    let logfile = FileAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{d(%Y-%m-%d %H:%M:%S%.3f)} - {l} - {f}:{L}- {m}{n}")))
-        .build("log/requests.log")
-        .unwrap();
 
     let config = Config::builder()
-        // .appender(
-        //     Appender::builder()
-        //         .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
-        //         .build("logfile", Box::new(logfile)))
+
         .appender(
             Appender::builder()
                 .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Info)))
                 .build("stderr", Box::new(stderr)))
         .build(
             Root::builder()
-                //.appender("logfile")
                 .appender("stderr")
-                .build(log::LevelFilter::Info),
+                .build(loglvl),
         )
         .unwrap();
 
         let _handle = log4rs::init_config(config).unwrap();
 
 
-    let args = Cli::parse();
 
     let re_net_id = Regex::new(r"^(\d{1,3}\.){5}\d{1,3}$").unwrap();
-    if (re_net_id.is_match(&args.AmsNetId)){
-        debug!("Valid AmsNetId found: {:?}", args.AmsNetId);
+    if re_net_id.is_match(&args.ams_net_id){
+        debug!("Valid AmsNetId found: {:?}", args.ams_net_id);
     } else {
         error!("Invalid AmsNetId");
         return Ok(())
@@ -123,23 +139,23 @@ async fn main() -> Result<()> {
 
     
     let re_device_id = Regex::new(r"^(100[1-9]|10[1-9]\d|1[1-9]\d{2}|[2-9]\d{3})$").unwrap();
-    if re_device_id.is_match(&args.DeviceAddress) {
-        debug!("Valid Device Address found: {:?}", args.DeviceAddress);  
+    if re_device_id.is_match(&args.device_address) {
+        debug!("Valid Device Address found: {:?}", args.device_address);  
     } else {
         error!("Invalid Device Address");
         return Ok(())
     }
 
-    let port = args.DeviceAddress.parse::<u32>().unwrap();
+    let port = args.device_address.parse::<u32>().unwrap();
 
-    let mut ec_device = EtherCATDevice::new(&args.AmsNetId, port).await?;
+    let mut ec_device = EtherCATDevice::new(&args.ams_net_id, port).await?;
 
     trace!("EtherCAT Device: {:?}", ec_device);
 
     match args.command {
-        Commands::fwupdate(arg) => {
-            trace!("Specified filename: {:?}", arg.fileName);
-            let fw_path = Path::new(&arg.fileName);
+        Commands::FwUpdate(arg) => {
+            trace!("Specified filename: {:?}", arg.file_name);
+            let fw_path = Path::new(&arg.file_name);
             match fw_path.try_exists() {
                 Ok(res) =>{
                     if res {debug!("Path check suceeded: {:?}", fw_path);}
@@ -212,7 +228,7 @@ async fn main() -> Result<()> {
             println!("FW update done - device need power cycle");
             Ok(())
         }
-        Commands::setstate(args) => {
+        Commands::SetState(args) => {
             //let stash_cmd = args.command.unwrap_or(EcStateCmd::op(stash.args));
             //let ec_state_arg = args.command;
             //let test = tokio::join!(ec_device.request_ec_state(args.command));
