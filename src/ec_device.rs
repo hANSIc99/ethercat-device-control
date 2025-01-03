@@ -8,7 +8,6 @@ use crate::misc::{EcState, EcErrState, EcLinkState, EcLinkPort, EcSDeviceError};
 
 type EtherCATSlaveState = std::result::Result<EcState, EcSDeviceError>;
 
-
 #[derive(Debug)]
 pub struct EtherCATDevice {
     state           : EtherCATSlaveState,
@@ -105,12 +104,6 @@ impl EtherCATDevice {
         Ok(())
     }
 
-    // pub async fn set_ec_state(&mut self, req_ec_state : EcState) -> Result<()> {
-
-    //     self.ads_ec_master.write(0x00000009, self.device_addr, &(req_ec_state as u16).to_ne_bytes() ).await?;
-    //     Ok(())
-    // }
-
     pub async fn request_ec_state(&mut self, req_ec_state : EcState) -> Result<()>{
 
         self.update_ec_state().await?;
@@ -161,5 +154,4 @@ impl EtherCATDevice {
         self.ads_ec_device.read_write(0xF405, f_hdl.try_into().unwrap(), &mut rd_raw, data).await?;
         Ok(())
     }
-
 }

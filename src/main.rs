@@ -10,20 +10,17 @@ use ec_device::EtherCATDevice;
 use misc::EcState;
 use regex::Regex;
 use clap::{Args, Parser, Subcommand, ValueEnum};
-pub type Result<T> = std::result::Result<T, AdsError>;
-
-use log::{trace, debug, info, warn, error};
+use log::{trace, debug, info, error};
 use log4rs::filter::threshold::ThresholdFilter;
 use log4rs::append::console::ConsoleAppender;
-use log4rs::append::file::FileAppender;
 use log4rs::encode::pattern::PatternEncoder;
 use log4rs::config::{Appender, Config, Root};
 
+pub type Result<T> = std::result::Result<T, AdsError>;
 
 #[derive(Parser)]
 #[command(version, about, long_about = "Long about instead of None")]
 
-// Todo: Log optionen
 // command attributes https://docs.rs/clap/latest/clap/_derive/index.html
 
 struct Cli {
@@ -32,20 +29,10 @@ struct Cli {
     ams_net_id: String,
     #[clap(value_parser, value_name = "DeviceAddress", required = true, help = "EtherCAT device number")]
     device_address: String,
-    // /// Sets a custom config file
-    // #[arg(short, long, value_name = "FILE")]
-    // config: Option<PathBuf>,
-
-    // /// Turn debugging information on
-    // #[arg(short, long, action = clap::ArgAction::Count)]
-    // debug: u8,
     #[clap(value_parser, value_name = "LogLevel", required = false)]
-    //log_level : Option<log::LevelFilter>,
     log_level : Option<LogLevel>,
-
     #[command(subcommand)]
     command: Commands,
-    
 }
 
 #[derive(ValueEnum, Debug, Clone)]
@@ -63,16 +50,7 @@ enum Commands {
     FwUpdate(FwUpdateArgs),
     #[command(rename_all = "lower" )]
     SetState(SetStateArgs),
-    // #[command(rename_all = "lower" )]
-    // LogLevel(LogLvlCmd)
 }
-
-// #[derive(Debug, Args)]
-// #[command(args_conflicts_with_subcommands = false)]
-// struct LogLvlCmd {
-//     #[command(subcommand)]
-//     level : LogLevel
-// }
 
 #[derive(Debug, Args)]
 #[command(args_conflicts_with_subcommands = true)]
@@ -81,16 +59,12 @@ struct FwUpdateArgs {
     file_name : String
 }
 
-
 #[derive(Debug, Args)]
 #[command(args_conflicts_with_subcommands = true, after_help = "after help string", after_long_help = "after long help")]
 struct SetStateArgs {
     #[command(subcommand)]
     command: EcState,
 }
-
-
-
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
@@ -113,7 +87,6 @@ async fn main() -> Result<()> {
         .build();
 
     let config = Config::builder()
-
         .appender(
             Appender::builder()
                 .filter(Box::new(ThresholdFilter::new(log::LevelFilter::Trace)))
@@ -125,20 +98,18 @@ async fn main() -> Result<()> {
         )
         .unwrap();
 
-        let _handle = log4rs::init_config(config).unwrap();
-
-
-
+    let _handle = log4rs::init_config(config).unwrap();
     let re_net_id = Regex::new(r"^(\d{1,3}\.){5}\d{1,3}$").unwrap();
+
     if re_net_id.is_match(&args.ams_net_id){
         debug!("Valid AmsNetId found: {:?}", args.ams_net_id);
     } else {
         error!("Invalid AmsNetId");
         return Ok(())
     };
-
     
     let re_device_id = Regex::new(r"^(100[1-9]|10[1-9]\d|1[1-9]\d{2}|[2-9]\d{3})$").unwrap();
+    
     if re_device_id.is_match(&args.device_address) {
         debug!("Valid Device Address found: {:?}", args.device_address);  
     } else {
@@ -147,7 +118,6 @@ async fn main() -> Result<()> {
     }
 
     let port = args.device_address.parse::<u32>().unwrap();
-
     let mut ec_device = EtherCATDevice::new(&args.ams_net_id, port).await?;
 
     trace!("EtherCAT Device: {:?}", ec_device);
@@ -170,14 +140,13 @@ async fn main() -> Result<()> {
                 }
             }
 
-
             let filename = fw_path  .file_stem()
                                             .ok_or_else(|| AdsError{n_error : 0x706, s_msg : String::from("Invalid Data - Filename not specified")})?;
 
+            let f_str = filename.to_str()
+                                            .ok_or_else(|| AdsError{n_error : 0x706, s_msg : String::from("Invalid Data - Filename not specified")})?;
 
-            let f_str = filename.to_str().ok_or_else(|| AdsError{n_error : 0x706, s_msg : String::from("Invalid Data - Filename not specified")})?;
-
-            // Datei einlesen
+            // Read file from disk
             let f = File::open(fw_path)?;
             let f_length = f.metadata().unwrap().len();
             info!("File length: {:?}", f_length);
@@ -195,18 +164,14 @@ async fn main() -> Result<()> {
                 trace!("File handle created: {:?}", f_hdl);
             }
 
-
             let mut chunk : [u8; 0x4000] = [0; 0x4000];
-
             let mut sum_read = 0;
 
             loop {
                 let bytes_read = f_reader.read(&mut chunk)?;
-
-                
-
                 sum_read += bytes_read;
 
+                // Calculate process
                 let bar : f32 = (sum_read as f32) / (f_length as f32) * 100.0;
 
                 print!("\rLoad [%]: {:2.1}", bar);
@@ -223,19 +188,11 @@ async fn main() -> Result<()> {
 
             }
             println!("\r\n");    
-
-            ec_device.ec_foe_close(f_hdl).await?;
             println!("FW update done - device need power cycle");
-            Ok(())
+            ec_device.ec_foe_close(f_hdl).await
         }
         Commands::SetState(args) => {
-            //let stash_cmd = args.command.unwrap_or(EcStateCmd::op(stash.args));
-            //let ec_state_arg = args.command;
-            //let test = tokio::join!(ec_device.request_ec_state(args.command));
             return ec_device.request_ec_state(args.command).await;
         }
     }
-
-
-    //Ok(())
 }

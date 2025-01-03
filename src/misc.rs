@@ -1,5 +1,4 @@
 use clap::Subcommand;
-use clap::{Args, Parser, ValueEnum};
 
 #[derive(Debug, Clone, Copy)]
 #[derive(PartialEq)]
@@ -26,7 +25,6 @@ impl From<u8> for EcState {
         }
     }
 }
-
 
 #[derive(Debug)]
 #[derive(PartialEq)]
